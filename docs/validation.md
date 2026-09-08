@@ -8,7 +8,7 @@ Validated locally on 2026-09-07. The current build configures telemetry through
 - Supplied input: `com.google.android.apps.youtube.music_8.40.54-84054240_minAPI26(arm64-v8a)(nodpi)_apkmirror.com.apk`
 - Input SHA-256: `d5b44919a5cd5648b01e392115fe68b9569b1c7847f3cdf65b1ace1302d005d2`
 - Release patch bundle: `patches/build/libs/music-telemetry-0.1.1.rvp`
-- Release bundle SHA-256: `d2f24a363aa45ed1cce3d71bc4f3fb6f4fc0a8579b72cfd7f3ea7d2c128d4097`
+- Published release bundle SHA-256: `e2d1b138eab46116128f4c865c9ff26e313e47d6d3663c7813598e75a2638072`
 - Output: `.local/music-8.40.54-listen.apk`
 - Output SHA-256: `7c1de7fb6b279d839cbfbdc4330d13f855466930f3c4be405e918c913bbab4ab`
 - Installed package: `app.revanced.android.apps.youtube.music`, version 8.40.54.
