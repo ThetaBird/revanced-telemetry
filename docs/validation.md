@@ -7,16 +7,17 @@ Validated locally on 2026-09-07. The current build configures telemetry through
 
 - Supplied input: `com.google.android.apps.youtube.music_8.40.54-84054240_minAPI26(arm64-v8a)(nodpi)_apkmirror.com.apk`
 - Input SHA-256: `d5b44919a5cd5648b01e392115fe68b9569b1c7847f3cdf65b1ace1302d005d2`
-- Patch bundle: `patches/build/libs/music-telemetry-0.1.0.rvp`
-- Bundle SHA-256: `4a57c2f3c39890210c62645fe132cde34cc91aa987c8f9c47ddb2e906137caf0`
+- Release patch bundle: `patches/build/libs/music-telemetry-0.1.1.rvp`
+- Release bundle SHA-256: `d2f24a363aa45ed1cce3d71bc4f3fb6f4fc0a8579b72cfd7f3ea7d2c128d4097`
 - Output: `.local/music-8.40.54-listen.apk`
 - Output SHA-256: `7c1de7fb6b279d839cbfbdc4330d13f855466930f3c4be405e918c913bbab4ab`
 - Installed package: `app.revanced.android.apps.youtube.music`, version 8.40.54.
 
-Includes all four local telemetry patches, the dependent native settings entry,
-and official v6.0.0 `GmsCore support`. Retains the local signing identity for
-updates. Earlier `nonroot-validation` and `settings` APKs are superseded by this
-artifact. APKs, downloads, keys and screenshots are ignored by Git.
+The release bundle includes all four local telemetry patches and the dependent
+native settings entry. The locally validated APK also includes official v6.0.0
+`GmsCore support`; it was built with the functionally identical 0.1.0 patch code
+before public release metadata was added. Retain one APK signing identity for
+updates. APKs, downloads, private keys and screenshots are ignored by Git.
 
 ## Settings validation
 

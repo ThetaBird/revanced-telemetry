@@ -32,7 +32,7 @@ script discovers Android Studio's JBR and the usual Android SDK location.
 ./scripts/build.sh
 ```
 
-Output: `patches/build/libs/music-telemetry-0.1.0.rvp`.
+Output: `patches/build/libs/music-telemetry-0.1.1.rvp`.
 
 The build downloads ReVanced CLI **6.0.0** and R8 **9.4.17**, verifying pinned
 SHA-256 checksums. It compiles against the CLI's bundled **Patcher 22** API with

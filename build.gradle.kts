@@ -1,5 +1,5 @@
 plugins { kotlin("jvm") version "2.3.10" apply false }
-allprojects { version = "0.1.0"; group = "dev.selfhosted.music" }
+allprojects { version = "0.1.1"; group = "dev.selfhosted.music" }
 val sdkDirectory = providers.environmentVariable("ANDROID_HOME")
     .orElse(providers.environmentVariable("ANDROID_SDK_ROOT"))
     .orElse(provider {
