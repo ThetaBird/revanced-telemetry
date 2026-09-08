@@ -1,0 +1,16 @@
+.gradle/
+.DS_Store
+**/build/
+.local/
+.venv/
+.venv-test/
+__pycache__/
+*.pyc
+*.sqlite*
+.env
+local.properties
+*.apk
+*.keystore
+*.jks
+oauth.json
+browser.json

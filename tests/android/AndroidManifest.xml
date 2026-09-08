@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.selfhosted.music.queuetest">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36" />
+    <application android:label="Telemetry queue tests" android:debuggable="true">
+        <activity android:name="dev.selfhosted.music.CaptureActivity" android:exported="false" />
+    </application>
+    <instrumentation android:name="dev.selfhosted.music.QueueInstrumentation" android:targetPackage="dev.selfhosted.music.queuetest" />
+</manifest>

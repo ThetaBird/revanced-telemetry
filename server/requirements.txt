@@ -1,0 +1,2 @@
+# Optional: only needed for playlist exports. Receiver uses Python's standard library.
+ytmusicapi==1.12.2

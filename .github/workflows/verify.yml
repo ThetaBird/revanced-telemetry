@@ -1,0 +1,36 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install Android SDK components
+        run: sdkmanager "platforms;android-36" "build-tools;36.1.0"
+      - name: Build and test patch bundle
+        run: ./scripts/build.sh
+      - name: Test packaging helpers
+        run: python3 -m unittest discover -s tests/scripts -v
+      - name: Check public tree
+        run: |
+          if git grep -I -n -E 'listen\.tacti\.dev|\.listen-token|BEGIN ([A-Z ]+ )?PRIVATE KEY' -- ':!.github/workflows/verify.yml'; then
+            echo "Private deployment configuration found in public sources." >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: music-telemetry-rvp
+          path: patches/build/libs/music-telemetry-0.1.0.rvp
+          if-no-files-found: error
