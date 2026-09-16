@@ -42,6 +42,12 @@ public final class Telemetry {
     private static long lastProgressNanos;
     private static boolean flushScheduled;
     private static int failures;
+    private static String lastPlaybackQueue;
+    private static String lastOpenedPlaylist;
+    private static String contextVideoId;
+    private static String contextPlaylistId;
+    private static int contextPlaylistIndex = -1;
+    private static String activePlaylistId;
 
     private Telemetry() {}
 
@@ -119,6 +125,7 @@ public final class Telemetry {
                 notifySettings(callback, config, null);
             } catch (Exception failure) {
                 enabled = false;
+                lastPlaybackQueue = null;
                 warn("Cannot save telemetry settings", failure);
                 notifySettings(callback, null, "Cannot apply settings. Telemetry is paused; try saving again.");
             }
@@ -131,6 +138,14 @@ public final class Telemetry {
 
     private static void applyConfiguration(TelemetryConfig config) throws Exception {
         boolean wasEnabled = enabled;
+        if (!wasEnabled || !config.enabled || url == null
+                || !url.toExternalForm().equals(config.endpoint)) {
+            lastPlaybackQueue = null;
+            lastOpenedPlaylist = null;
+            contextVideoId = null;
+            contextPlaylistId = null;
+            activePlaylistId = null;
+        }
         enabled = false;
         if (flushTask != null) flushTask.cancel(false);
         flushTask = null;
@@ -151,6 +166,122 @@ public final class Telemetry {
         if (enabled) scheduleFlush(0);
     }
 
+    /** Ordered, currently loaded playback queue; null entries represent unresolved songs. */
+    public static void onPlaybackQueue(String[] videoIds) {
+        try {
+            if (videoIds == null || videoIds.length > PlaylistSnapshot.MAX_TRACKS) return;
+            // Copy before returning to the host, which may immediately mutate its array.
+            final String[] captured = videoIds.clone();
+            final long time = System.currentTimeMillis();
+            submit(() -> {
+                PlaylistSnapshot.normalize(captured);
+                org.json.JSONArray tracks = new org.json.JSONArray();
+                for (String id : captured) {
+                    try { tracks.put(new JSONObject().put("videoId", id == null ? JSONObject.NULL : id)); }
+                    catch (Exception failure) { warn("Cannot capture playback queue", failure); return; }
+                }
+                capturePlaybackQueue(tracks, time);
+            });
+        } catch (Throwable failure) { warn("Cannot capture playback queue", failure); }
+    }
+
+    /** Immutable JSON array from the queue hook; only supported song metadata is retained. */
+    public static void onPlaybackQueueMetadata(String serializedTracks) {
+        try {
+            if (serializedTracks == null || serializedTracks.length() > 16 * 1024 * 1024) return;
+            final long time = System.currentTimeMillis();
+            submit(() -> {
+                try { capturePlaybackQueue(new org.json.JSONArray(serializedTracks), time); }
+                catch (Exception failure) { warn("Cannot capture playback queue metadata", failure); }
+            });
+        } catch (Throwable failure) { warn("Cannot capture playback queue metadata", failure); }
+    }
+
+    private static void capturePlaybackQueue(org.json.JSONArray tracks, long time) {
+        if (!enabled || store == null) { lastPlaybackQueue = null; return; }
+        try {
+            org.json.JSONArray normalized = PlaylistSnapshot.normalize(tracks);
+            String identity = normalized.toString();
+            if (identity.equals(lastPlaybackQueue)) return;
+            List<JSONObject> parts = PlaylistSnapshot.events(normalized, time, sourcePackage,
+                    DROPPED_CALLBACKS.get());
+            android.database.sqlite.SQLiteDatabase db = store.getWritableDatabase();
+            db.beginTransaction();
+            try {
+                for (JSONObject part : parts) store.append(part);
+                db.setTransactionSuccessful();
+            } finally { db.endTransaction(); }
+            lastPlaybackQueue = identity;
+            scheduleFlush(1);
+        } catch (Exception failure) { warn("Cannot persist playback queue", failure); }
+    }
+
+    public static void onPlaylistOpened() {
+        submit(() -> lastOpenedPlaylist = null);
+    }
+
+    /** A loaded playlist page is a partial observation, never a full-library export. */
+    public static void onOpenedPlaylist(String playlistId, String title, String serializedTracks) {
+        onOpenedPlaylistMetadata(playlistId, title, serializedTracks, "{}");
+    }
+
+    public static void onOpenedPlaylistMetadata(String playlistId, String title, String serializedTracks,
+                                                String serializedMetadata) {
+        try {
+            if (playlistId == null || playlistId.isEmpty() || playlistId.length() > 128
+                    || serializedTracks == null || serializedTracks.length() > 16 * 1024 * 1024
+                    || serializedMetadata == null || serializedMetadata.length() > 32 * 1024) return;
+            final long time = System.currentTimeMillis();
+            submit(() -> {
+                if (!enabled || store == null) { lastOpenedPlaylist = null; return; }
+                try {
+                    org.json.JSONArray tracks = PlaylistSnapshot.normalize(new org.json.JSONArray(serializedTracks));
+                    String label = title == null ? "" : title;
+                    JSONObject metadata = PlaylistSnapshot.playlistMetadata(new JSONObject(serializedMetadata));
+                    String identity = new org.json.JSONArray().put(playlistId).put(label).put(tracks).put(metadata).toString();
+                    if (identity.equals(lastOpenedPlaylist)) return;
+                    List<JSONObject> parts = PlaylistSnapshot.events(tracks, time, sourcePackage,
+                            DROPPED_CALLBACKS.get(), "playlist_snapshot", playlistId, label, "loaded_playlist", metadata);
+                    android.database.sqlite.SQLiteDatabase db = store.getWritableDatabase();
+                    db.beginTransaction();
+                    try {
+                        for (JSONObject part : parts) store.append(part);
+                        db.setTransactionSuccessful();
+                    } finally { db.endTransaction(); }
+                    lastOpenedPlaylist = identity;
+                    scheduleFlush(1);
+                } catch (Exception failure) { warn("Cannot persist opened playlist", failure); }
+            });
+        } catch (Throwable failure) { warn("Cannot capture opened playlist", failure); }
+    }
+
+    /** Current queue descriptor; matched to a track-load observation before emitting playback. */
+    public static void onPlaylistContext(String trackId, String playlistId, int index) {
+        final long time = System.currentTimeMillis();
+        submit(() -> {
+            if (!enabled || store == null) return;
+            contextVideoId = trackId;
+            contextPlaylistId = playlistId != null && !playlistId.isEmpty() && playlistId.length() <= 128
+                    ? playlistId : null;
+            contextPlaylistIndex = index;
+            if (trackId == null && contextPlaylistId == null) activePlaylistId = null;
+            recordPlaylistPlayback(time);
+        });
+    }
+
+    private static void recordPlaylistPlayback(long time) {
+        if (videoId == null || !videoId.equals(contextVideoId)) return;
+        if (contextPlaylistId == null) { activePlaylistId = null; return; }
+        if (contextPlaylistId.equals(activePlaylistId)) return;
+        try {
+            boolean persisted = record("playlist_playback_started", time, new JSONObject()
+                    .put("playlistId", contextPlaylistId).put("playlistIndex", contextPlaylistIndex)
+                    .put("origin", "playback_queue").put("observation", "track_loaded")
+                    .put("videoIdBasis", "playback_start_descriptor"));
+            if (persisted) activePlaylistId = contextPlaylistId;
+        } catch (Exception failure) { warn("Cannot capture playlist playback", failure); }
+    }
+
     public static void onTrack(String id) {
         final long time = System.currentTimeMillis();
         submit(() -> {
@@ -160,6 +291,7 @@ public final class Telemetry {
             positionMs = -1;
             lastProgressNanos = 0;
             record("track_loaded", time, null);
+            recordPlaylistPlayback(time);
         });
     }
 
@@ -207,6 +339,51 @@ public final class Telemetry {
                         .put("observation", "request_built");
                 record(rating == 1 ? "like" : rating == -1 ? "dislike" : "remove_rating", time, details);
             } catch (Exception failure) { warn("Cannot capture rating request", failure); }
+        });
+    }
+
+    /** Called after a repeat-button command returns, with its selected native enum. */
+    public static void onRepeatMode(Object nativeMode) {
+        try {
+            if (!(nativeMode instanceof Enum<?>)) return;
+            String name = ((Enum<?>) nativeMode).name();
+            final String mode;
+            final int modeCode;
+            final String scope;
+            switch (name) {
+                case "LOOP_OFF": mode = "off"; modeCode = 0; scope = "off"; break;
+                case "LOOP_ALL": mode = "all"; modeCode = 2; scope = "queue"; break;
+                case "LOOP_ONE": mode = "one"; modeCode = 1; scope = "song"; break;
+                default: return;
+            }
+            final long time = System.currentTimeMillis();
+            submit(() -> {
+                try {
+                    record("repeat_mode_changed", time, new JSONObject()
+                            .put("repeatMode", modeCode).put("repeatModeName", mode).put("repeatScope", scope)
+                            .put("playlistId", videoId != null && videoId.equals(contextVideoId)
+                                    && contextPlaylistId != null ? contextPlaylistId : JSONObject.NULL)
+                            .put("origin", "player_controls").put("observation", "command_applied"));
+                } catch (Exception failure) { warn("Cannot capture repeat mode", failure); }
+            });
+        } catch (Throwable failure) { captureFailure("Repeat mode capture failed", failure); }
+    }
+
+    /** Selected queue occurrence, independently of the track currently loaded in the player. */
+    public static void onQueueSongSelected(String targetVideoId, String queueId, String playlistId, int index) {
+        final long time = System.currentTimeMillis();
+        submit(() -> {
+            try {
+                boolean known = targetVideoId != null && targetVideoId.matches("[A-Za-z0-9_-]{11}");
+                record("queue_song_selected", time, new JSONObject()
+                        .put("videoId", known ? targetVideoId : JSONObject.NULL)
+                        .put("videoIdBasis", known ? "queue_item" : "unresolved_queue_target")
+                        .put("queueId", queueId == null ? JSONObject.NULL : queueId)
+                        .put("playlistId", playlistId == null || playlistId.isEmpty() ? JSONObject.NULL : playlistId)
+                        .put("playlistIndex", index)
+                        .put("contextVideoId", videoId == null ? JSONObject.NULL : videoId)
+                        .put("origin", "playback_queue").put("observation", "command_dispatched"));
+            } catch (Exception failure) { warn("Cannot capture queue selection", failure); }
         });
     }
 
@@ -261,8 +438,8 @@ public final class Telemetry {
         });
     }
 
-    private static void record(String type, long time, JSONObject data) {
-        if (!enabled || store == null) return;
+    private static boolean record(String type, long time, JSONObject data) {
+        if (!enabled || store == null) return false;
         try {
             SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
             formatter.setTimeZone(TimeZone.getTimeZone("UTC"));
@@ -280,7 +457,8 @@ public final class Telemetry {
             }
             store.append(event);
             scheduleFlush(1);
-        } catch (Exception failure) { warn("Cannot persist event", failure); }
+            return true;
+        } catch (Exception failure) { warn("Cannot persist event", failure); return false; }
     }
 
     private static void scheduleFlush(long delaySeconds) {
@@ -329,6 +507,12 @@ public final class Telemetry {
             int status = connection.getResponseCode();
             if (status < 200 || status >= 300) throw new UploadFailure(status);
         } finally { connection.disconnect(); }
+    }
+
+    static void captureFailure(String stage, Throwable failure) {
+        long count = DROPPED_CALLBACKS.incrementAndGet();
+        // Fixed stage names and exception categories only; logarithmic logging avoids spam.
+        if (count == 1 || (count & (count - 1)) == 0) warn(stage, failure);
     }
 
     private static void warn(String message, Throwable failure) {

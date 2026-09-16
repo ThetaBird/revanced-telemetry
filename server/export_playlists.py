@@ -63,7 +63,8 @@ def snapshot_events(snapshot, device_id):
     base = {"event": "playlist_snapshot", "snapshotId": snapshot_id,
             "playlistId": snapshot["playlistId"], "title": snapshot["title"],
             "deviceId": device_id, "sourcePackage": "com.google.android.apps.youtube.music",
-            "observedAt": snapshot["observedAt"], "totalTracks": len(snapshot["tracks"])}
+            "observedAt": snapshot["observedAt"], "totalTracks": len(snapshot["tracks"]),
+            "complete": True, "snapshotScope": "saved_playlist"}
     # Reserve worst-case part counters and IDs while packing by UTF-8 byte size.
     base_size = len(json.dumps(dict(base, id=snapshot_id + ":50000", partIndex=50000,
                                     partCount=50000, tracks=[]), ensure_ascii=False).encode())
@@ -87,7 +88,7 @@ def snapshot_events(snapshot, device_id):
 
 
 def reassemble_snapshot(events):
-    """Return a complete snapshot or None; callers keep their prior snapshot on None."""
+    """Reassemble all transport parts; complete=False still means a partial source view."""
     if not isinstance(events, list) or not events:
         return None
     first = events[0]
@@ -95,17 +96,21 @@ def reassemble_snapshot(events):
         return None
     if type(first.get("totalTracks")) is not int or not 0 <= first["totalTracks"] <= 50000:
         return None
+    if "complete" in first and type(first["complete"]) is not bool:
+        return None
+    if "snapshotScope" in first and not isinstance(first["snapshotScope"], str):
+        return None
     for field in ("snapshotId", "playlistId", "deviceId", "observedAt", "title"):
         if not isinstance(first.get(field), str):
             return None
     if first["totalTracks"] == 0 and first["partCount"] != 1:
         return None
-    keys = ("snapshotId", "playlistId", "partCount", "totalTracks", "deviceId", "observedAt", "title")
+    keys = ("event", "snapshotId", "playlistId", "partCount", "totalTracks", "deviceId", "observedAt", "title", "snapshotScope", "complete", "origin", "playlistMetadata")
     parts = {}
     for event in events:
         if not isinstance(event, dict) or not isinstance(event.get("tracks"), list):
             return None
-        if event.get("event") != "playlist_snapshot" or any(event.get(k) != first.get(k) for k in keys):
+        if event.get("event") not in {"playlist_snapshot", "playback_queue"} or any(event.get(k) != first.get(k) for k in keys):
             return None
         if type(event.get("partCount")) is not int or type(event.get("totalTracks")) is not int:
             return None
@@ -125,7 +130,10 @@ def reassemble_snapshot(events):
     if len(tracks) != first["totalTracks"] or [t.get("position") for t in tracks] != list(range(len(tracks))):
         return None
     return {"snapshotId": first["snapshotId"], "playlistId": first["playlistId"],
-            "observedAt": first["observedAt"], "title": first.get("title", ""), "tracks": tracks}
+            "observedAt": first["observedAt"], "title": first.get("title", ""), "tracks": tracks,
+            "event": first["event"], "complete": first.get("complete", True),
+            "snapshotScope": first.get("snapshotScope", "saved_playlist"), "origin": first.get("origin"),
+            "playlistMetadata": first.get("playlistMetadata", {})}
 
 
 def upload(url, token, event):

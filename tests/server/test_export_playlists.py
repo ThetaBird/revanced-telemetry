@@ -63,6 +63,20 @@ class ExportTests(unittest.TestCase):
         malformed = dict(single[0], tracks=[dict(single[0]['tracks'][0], position=False)])
         self.assertIsNone(reassemble_snapshot([malformed]))
 
+    def test_loaded_views_keep_scope_and_cannot_mix_event_types(self):
+        events = snapshot_events(make_snapshot('PL1', {'tracks': [{'videoId': 'abcdefghijk'}]}), 'phone')
+        for kind, scope in (('playlist_snapshot', 'loaded_playlist'), ('playback_queue', 'loaded_playback_queue')):
+            part = dict(events[0], event=kind, complete=False, snapshotScope=scope,
+                        playlistMetadata={'description': 'Description', 'metadataRuns': [{'browseId': 'UC_owner'}]})
+            restored = reassemble_snapshot([part])
+            self.assertFalse(restored['complete'])
+            self.assertEqual(restored['snapshotScope'], scope)
+            self.assertEqual(restored['event'], kind)
+            self.assertEqual(restored['playlistMetadata'], part['playlistMetadata'])
+            self.assertIsNone(reassemble_snapshot([part, dict(part, playlistMetadata={})]))
+            self.assertIsNone(reassemble_snapshot([part, dict(part, complete=True)]))
+            self.assertIsNone(reassemble_snapshot([part, dict(part, event='music_action')]))
+
     def test_cli_sanitized_failure_stages(self):
         import contextlib
         import io

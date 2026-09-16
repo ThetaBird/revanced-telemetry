@@ -28,6 +28,12 @@ class AuditApk {
                         if (!definition.getType().startsWith("Ldev/selfhosted/music/")
                                 && reference instanceof MethodReference) {
                             var called = (MethodReference) reference;
+                            if (called.getDefiningClass().equals("Ldev/selfhosted/music/NativeQueueCapture;"))
+                                calls.merge("queue:" + called.getName(), 1, Integer::sum);
+                            if (called.getDefiningClass().equals("Ldev/selfhosted/music/QueueSelectionCapture;"))
+                                calls.merge("queueSelection:" + called.getName(), 1, Integer::sum);
+                            if (called.getDefiningClass().equals("Ldev/selfhosted/music/OpenedPlaylistCapture;"))
+                                calls.merge("playlist:" + called.getName(), 1, Integer::sum);
                             if (called.getDefiningClass().equals(extension))
                                 calls.merge(called.getName(), 1, Integer::sum);
                             if (called.getDefiningClass().equals(settings)
@@ -45,6 +51,11 @@ class AuditApk {
         if (!present || !settingsPresent || settingsCalls < 1 || calls.getOrDefault("init", 0) < 1
                 || calls.getOrDefault("onTrack", 0) < 1 || calls.getOrDefault("onPosition", 0) < 1
                 || calls.getOrDefault("onRating", 0) < 3
+                || calls.getOrDefault("onRepeatMode", 0) < 2
+                || calls.getOrDefault("queueSelection:capture", 0) < 1
+                || calls.getOrDefault("queue:capture", 0) < 1
+                || calls.getOrDefault("playlist:opened", 0) < 1
+                || calls.getOrDefault("playlist:capture", 0) < 1
                 || calls.getOrDefault("onInAppSkipNext", 0) < 2
                 || calls.getOrDefault("onInAppSkipPrevious", 0) < 2) {
             throw new IllegalStateException("Required telemetry code or settings hook is absent; do not install this APK.");

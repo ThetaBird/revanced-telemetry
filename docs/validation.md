@@ -1,9 +1,91 @@
 # YouTube Music 8.40.54 validation
 
+## Ratings, repeat and queue clicks — 2026-09-15
+
+Current local artifacts (not a published release):
+
+- APK: `.local/music-8.40.54-controls.apk`
+- APK SHA-256: `bd91c5ffa15c667b75f3da49d3e04280674cb4e96ed375f15d326eb4337b8edf`
+- Bundle: `patches/build/libs/music-telemetry-0.1.1.rvp`
+- Bundle SHA-256: `1f4eb1d1eed605a17dc5083c7285987882f036341bdf2e7e1846287d13b270ef`
+
+| Check | Result |
+|---|---|
+| Kotlin patch tests | 35 passed, including 11 new repeat/selection tests |
+| Exporter/receiver integration tests | 10 passed |
+| Patch helper tests | 8 passed |
+| Android strict compilation and instrumentation | Passed, including new control/extraction fixtures |
+| Actual supplied APK patching and hook audit | All eight telemetry patches plus GmsCore support passed |
+| APK signature verification | v2 and v3 verified |
+| Focused independent code review | No blockers |
+
+Existing like/dislike/remove-rating callbacks were revalidated with exact request
+targets distinct from player context. Repeat tests cover all three modes,
+unknown/disabled rejection, matched/stale playlist context and disabled telemetry.
+Queue selection tests cover precise 64-bit occurrence IDs, duplicate song IDs,
+selected-vs-current targets, rejected click branches, non-queue rows and extraction
+failures. HTTP integration verifies these actions are stored privately, retain
+metadata and deduplicate upload retries without affecting now-playing.
+
+The receiver's existing `repeatMode` field is numeric: `0` off, `1` one, `2` all.
+Readable `repeatModeName` and `repeatScope` fields accompany it. Native enum
+ordinals differ and are deliberately not exported as receiver mode codes.
+Repeat hooks run after the two native UI control commands return; automatic repeat
+changes are excluded. Queue hooks run before dispatch only after the native Up
+Next click gate accepts the action; menu/remove/reorder and rejected callbacks
+are excluded. Request/command observation does not claim Google acceptance or
+audible playback. Signed-in live UI payloads remain unverified.
+
+## Queue and opened-playlist capture — 2026-09-15
+
+Previously validated queue/playlist artifacts:
+
+- APK: `.local/music-8.40.54-queue-playlists.apk`
+- APK SHA-256: `673d6b076d7619d12477d6d0dd071048aae723e78d5725ccdccfe39884fe4426`
+- Bundle: `patches/build/libs/music-telemetry-0.1.1.rvp`
+- Bundle SHA-256: `d61b2c8da4a848407066d6df65830267749f08c08cfd2d5da314b0d24a091e7b`
+
+| Check | Result |
+|---|---|
+| Kotlin patch tests | 24 passed |
+| Exporter/receiver integration tests | 9 passed |
+| Python patch helper tests | 8 passed |
+| Companion Listen regression suite | 68 passed; SQLite connection ResourceWarnings emitted |
+| Strict Android Java compilation | `-Xlint:all -Werror` passed |
+| Android instrumentation | Passed; `.local/android-queue-tests/result.txt` |
+| Actual supplied APK patching | All six telemetry patches plus GmsCore support succeeded |
+| Emitted DEX audit | Queue capture, playlist open/bind, existing telemetry/settings hooks present |
+| APK signature verification | v2 and v3 verified |
+
+The Android harness covers native queue extraction beyond the framework's 25-item
+window, ordered duplicates and unresolved positions, immutable capture, rich
+metadata normalization, chunk byte bounds, SQLite persistence/retries, disabled
+capture and destination resets. Playlist tests cover loaded rows, occurrence and
+browse IDs, header descriptions/text/artwork, playlist-entry deduplication,
+empty-queue reset, reopening, and sanitized extraction-failure diagnostics.
+Patch fixtures reject changed anchors and serialize the resulting DEX.
+
+`playback_queue` captures the entire **loaded** native queue. Opened
+`playlist_snapshot` events capture the supported playlist detail renderer's loaded
+rows and carry `complete: false`; they do not force pagination or claim the full
+remote playlist. Unknown/opaque Elements fields are not decoded. The
+`playlist_playback_started` action matches a current playlist descriptor to a
+loaded track, with `observation: "track_loaded"`, not proof of audible playback.
+Reassembly preserves partial-source scope separately from transport completeness.
+
+The patch helper now selects the current 0.1.1 bundle instead of the stale 0.1.0
+path. The companion `../listen/server/listen_server.py` changes accept
+`playback_queue` privately and exclude it from now-playing. No production receiver
+was deployed. Signed-in live playlist UI/queue payloads and playback remain
+unverified; actual-app installation/settings evidence below belongs to the prior
+settings build. The current APK was built, audited and signature-verified locally.
+
+## Prior settings build — 2026-09-07
+
 Validated locally on 2026-09-07. The current build configures telemetry through
 **Settings → Listen telemetry**. No collector URL or write token is embedded.
 
-## Current artifacts
+## Previous release artifacts
 
 - Supplied input: `com.google.android.apps.youtube.music_8.40.54-84054240_minAPI26(arm64-v8a)(nodpi)_apkmirror.com.apk`
 - Input SHA-256: `d5b44919a5cd5648b01e392115fe68b9569b1c7847f3cdf65b1ace1302d005d2`

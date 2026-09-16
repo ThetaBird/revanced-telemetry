@@ -4,9 +4,10 @@ A custom ReVanced patch bundle and playlist exporter for **YouTube Music
 8.40.54**, using the event protocol from the sibling `../listen` project.
 The Android extension is DEX code and can be injected into an arm64-v8a APK.
 
-The supplied **8.40.54 (84054240), arm64-v8a** APK has been patched with all four
-telemetry patches, an in-app settings page and official GmsCore support. The
-signed APK installs and opens **Settings → Listen telemetry** on an ARM64 emulator.
+The supplied **8.40.54 (84054240), arm64-v8a** APK has been patched with all eight
+telemetry patches, an in-app settings page and official GmsCore support. The latest
+signed APK passes the injected-hook audit and signature checks. The prior settings
+build installed and opened **Settings → Listen telemetry** on an ARM64 emulator.
 URL and token start empty; telemetry is off until configured and enabled.
 Signed-in playback, live carousel coverage and production delivery remain unverified.
 
@@ -18,7 +19,12 @@ Signed-in playback, live carousel coverage and production delivery remain unveri
 | Playback position | Music time callback, throttled to 15 seconds | Position observation, not play/pause or a skip inference. |
 | Like/dislike/remove rating | Rating-request serialization with exact target ID | `videoId` comes from the request; `contextVideoId` is the current player. Request construction is not Google acceptance or a unique button press; retries may repeat it. |
 | Media-session next/previous/play/pause | Optional framework callback patch | Dispatch through Android media sessions only. Reports which methods match; does not establish the originating UI/headset. |
+| Playback queue | Native queue before the media-session 25-song window | Emits `playback_queue` for changes to the entire loaded queue, preserving order, duplicates, video/queue/playlist IDs and available display metadata. Unloaded recommendations are outside the snapshot. |
+| Opened playlists | Playlist detail header and loaded adapter | Emits `playlist_snapshot` on open and loaded-content changes, including off-screen loaded songs. `complete: false` distinguishes these observations from full saved-playlist exports. |
+| Playlist playback | Current queue descriptor matched to a loaded track | Emits `music_action` / `playlist_playback_started` when entering a playlist; retains its ID/index. This observes a track load, not audible playback. |
 | Saved playlists and Liked Songs | Authenticated, paginated server-side exporter | Preserves ordering and duplicate entries; does not export a live radio/Quick Play queue. |
+| Repeat song/queue/off | Native repeat-button paths after the command returns | Emits `repeat_mode_changed` with `repeatModeName: "one"`, `"all"`, or `"off"`. Repeat all affects the current queue, including a playing playlist; automatic state changes are excluded. |
+| Queue song click | Accepted Up Next row command path | Emits `queue_song_selected` with exact song/queue occurrence and source playlist IDs/index when available. Overflow, reorder and rejected clicks are excluded. |
 | In-app Skip/Previous | Accepted command paths in both player layouts | Emits `skip_requested` / `previous_requested`, with `origin: "player_controls"`; does not prove a track transition. |
 | Carousel song selection | Optional two-row carousel callback and watch-endpoint target | Emits `carousel_song_selected` with the visible `sourceTitle`. Covers this renderer's primary song tap, not every Quick Play layout or gesture. |
 
@@ -58,6 +64,8 @@ RVP as `application/zip` and disable it in the picker.
 Choose the original YouTube Music **8.40.54** APK from storage. The core
 **Self-hosted Music telemetry** patch includes the in-app configuration page.
 Select **In-app Music player action telemetry** for player next/previous,
+**Native playback queue telemetry** and **Opened playlist snapshots** for queue/playlist capture,
+**Repeat mode telemetry** and **Playback queue selection telemetry** for repeat and Up Next clicks,
 **Media-session action telemetry** for media controls, and **Carousel selection
 telemetry** for the supported two-row carousel renderer. For a non-root install,
 also select the official **GmsCore support** patch and install ReVanced GmsCore.
@@ -103,7 +111,8 @@ For carousel selections, add `--carousel-selections`. Events contain the observe
 heading, such as `Quick picks`, only when the bound item and its visible carousel
 header can be associated. Other grids, renderers, and double-tap behavior are not
 covered. Media-session and carousel hooks are optional; track, position, rating,
-and in-app next/previous hooks are included by default.
+in-app next/previous, native queue, opened-playlist, repeat and queue-selection hooks
+are included by default.
 
 For a non-root installation, fetch the pinned official **6.0.0** base bundle and
 select its GmsCore support patch:
@@ -165,11 +174,26 @@ Example rating request observation:
 }
 ```
 
-The receiver stores `music_action` and `playlist_snapshot` privately and excludes
+The receiver stores `music_action`, `playback_queue` and `playlist_snapshot` privately and excludes
 them from playback resolution and public now-playing, including after restart.
 Existing Listen playback observations continue to drive that feed. If an upstream
-worker also validates event names, its allowlist must accept the two new names;
+worker also validates event names, its allowlist must accept all three names;
 no separately deployed worker code was present in the inspected Listen checkout.
+
+Queue and opened-playlist snapshots use the existing collector and settings. They
+contain the IDs and metadata that the supported native models expose; unknown fields
+are omitted. They do not upload Google credentials, request tokens, or raw protobufs.
+The native queue includes video IDs, queue IDs, source playlist IDs/indexes, titles,
+subtitles and thumbnails when available. Opened playlists include video IDs,
+occurrence IDs, linked browse IDs, display text and mapped artwork. Playlist header
+metadata includes descriptions, supplementary text and linked IDs where exposed by
+the supported renderer. Opaque Elements payloads and unmapped fields are omitted. Pagination is passive: scrolling
+loads more songs and produces another snapshot of the accumulated loaded rows.
+No claim is made that every server-side song has loaded.
+
+Deploy the companion receiver change in `../listen/server/listen_server.py` before
+sending `playback_queue`; older receivers reject that event name. Local changes
+have not been deployed.
 
 See [playlist export setup and scheduling](server/README.md) for authenticated
 full-library exports, chunked snapshots, and complete-snapshot reassembly.
@@ -218,12 +242,13 @@ python3 -m venv .venv-test
 .venv-test/bin/python -m unittest discover -s ../listen/server -p 'test_*.py'
 ```
 
-The current local artifact is `.local/music-8.40.54-listen.apk`. It contains no
+The current local artifact is `.local/music-8.40.54-controls.apk`. It contains no
 embedded collector configuration. In **Settings → Listen telemetry**, enter your
 collector URL and Listen write token, enable telemetry, and save. Updating either
 setting requires no restart or rebuild.
 
-The 17 Kotlin patch tests, 8 helper tests and Android runtime harness pass.
+The 35 Kotlin patch tests, 10 exporter/integration tests, 8 helper tests and Android
+runtime harness pass.
 The harness exercises the real form, invalid input, persistence, disabled capture,
 live endpoint/token changes, retry identity and preserved playback context. Its
 HTTPS transport is an in-memory test substitute. The actual patched Music app's

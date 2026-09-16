@@ -28,8 +28,14 @@ public final class QueueInstrumentation extends Instrumentation {
             capacityAndRollback();
             callbackPayloads();
             RuntimeCaptureTests.run(this);
+            PlaylistSnapshotTests.run(this);
+            NativeQueueCaptureTests.run();
+            OpenedPlaylistCaptureTests.run();
+            PlaylistEventsTests.run(this);
+            ControlEventsTests.run(this);
+            QueueSelectionCaptureTests.run();
             SettingsTests.run(this);
-            result.putString("stream", "\nPASS: persistence, stable retries, acknowledgments, capacity, eviction counters, transaction rollback, callback payloads, progress throttling, exact rating targets, player commands, carousel protobuf and visible hierarchy; settings UI, persistence, validation, runtime URL/token changes, disabled capture, destination isolation\n");
+            result.putString("stream", "\nPASS: persistence, stable retries, acknowledgments, capacity, eviction counters, transaction rollback, callback payloads, progress throttling, exact rating targets, repeat button modes, queue song selection targets, player commands, carousel protobuf and visible hierarchy; playback queue snapshots, ordered duplicates, immutable capture, chunk bounds, stable retries and destination resets; settings UI, persistence, validation, runtime URL/token changes, disabled capture, destination isolation\n");
             finish(-1, result);
         } catch (Throwable failure) {
             result.putString("stream", "\nFAIL: " + android.util.Log.getStackTraceString(failure));

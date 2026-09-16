@@ -39,7 +39,7 @@ def main():
     if args.enable_base_patch and not args.base_patches:
         parser.error('--enable-base-patch requires --base-patches')
     cli = bootstrap()
-    bundle = ROOT / 'patches/build/libs/music-telemetry-0.1.0.rvp'
+    bundle = ROOT / 'patches/build/libs/music-telemetry-0.1.1.rvp'
     if not bundle.exists():
         parser.error('run scripts/build.sh first')
     java_home = os.environ.get('JAVA_HOME', '/Applications/Android Studio.app/Contents/jbr/Contents/Home')
@@ -48,7 +48,9 @@ def main():
     output.parent.mkdir(parents=True, exist_ok=True)
     # This bundle was built from our local sources and has no remote build attestation.
     command = ['patch', '--exclusive', '-b', '-p', str(bundle), '-e', 'Self-hosted Music telemetry']
-    command += ['-e', 'In-app Music player action telemetry']
+    command += ['-e', 'In-app Music player action telemetry',
+                '-e', 'Native playback queue telemetry', '-e', 'Opened playlist snapshots',
+                '-e', 'Repeat mode telemetry', '-e', 'Playback queue selection telemetry']
     if args.media_session_actions:
         command += ['-e', 'Media-session action telemetry']
     if args.carousel_selections:

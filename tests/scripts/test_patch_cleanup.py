@@ -18,7 +18,7 @@ class PatchCleanupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / '.local').mkdir()
-            bundle = root / 'patches/build/libs/music-telemetry-0.1.0.rvp'
+            bundle = root / 'patches/build/libs/music-telemetry-0.1.1.rvp'
             bundle.parent.mkdir(parents=True)
             bundle.touch()
             apk = root / 'input.apk'
@@ -34,6 +34,10 @@ class PatchCleanupTests(unittest.TestCase):
                     self.assertNotIn('-Oendpoint', patch_arguments)
                     self.assertNotIn('-Otoken', patch_arguments)
                     self.assertIn('Self-hosted Music telemetry', patch_arguments)
+                    self.assertIn('Native playback queue telemetry', patch_arguments)
+                    self.assertIn('Opened playlist snapshots', patch_arguments)
+                    self.assertIn('Repeat mode telemetry', patch_arguments)
+                    self.assertIn('Playback queue selection telemetry', patch_arguments)
                 output.write_bytes(b'generated but not yet audited')
                 if len(calls) == 1:
                     if failure == 'cli_interrupt':
