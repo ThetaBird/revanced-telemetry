@@ -18,7 +18,7 @@ class PatchCleanupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / '.local').mkdir()
-            bundle = root / 'patches/build/libs/music-telemetry-0.1.1.rvp'
+            bundle = root / 'patches/build/libs/music-telemetry-0.1.2.rvp'
             bundle.parent.mkdir(parents=True)
             bundle.touch()
             apk = root / 'input.apk'

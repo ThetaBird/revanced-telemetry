@@ -33,5 +33,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: music-telemetry-rvp
-          path: patches/build/libs/music-telemetry-0.1.1.rvp
+          path: patches/build/libs/music-telemetry-0.1.2.rvp
           if-no-files-found: error

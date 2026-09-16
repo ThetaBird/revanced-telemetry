@@ -39,7 +39,7 @@ def main():
     if args.enable_base_patch and not args.base_patches:
         parser.error('--enable-base-patch requires --base-patches')
     cli = bootstrap()
-    bundle = ROOT / 'patches/build/libs/music-telemetry-0.1.1.rvp'
+    bundle = ROOT / 'patches/build/libs/music-telemetry-0.1.2.rvp'
     if not bundle.exists():
         parser.error('run scripts/build.sh first')
     java_home = os.environ.get('JAVA_HOME', '/Applications/Android Studio.app/Contents/jbr/Contents/Home')

@@ -36,4 +36,5 @@ jobs:
           artifact="patches/build/libs/music-telemetry-${GITHUB_REF_NAME#v}.rvp"
           sha256sum "$artifact" > "$artifact.sha256"
           gh release create "$GITHUB_REF_NAME" "$artifact" "$artifact.sha256" \
-            --title "Music telemetry ${GITHUB_REF_NAME#v}" --generate-notes
+            --title "Music telemetry ${GITHUB_REF_NAME#v}" \
+            --notes-file "docs/releases/${GITHUB_REF_NAME#v}.md"
