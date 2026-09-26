@@ -37,6 +37,7 @@ val playbackQueuePatch = bytecodePatch(
                 } != 1) throw PatchException("Playback queue: unsupported field $type->$name:$fieldType")
         }
         requireMethod(QUEUE_CAPTURE, "capture", "V", listOf("Ljava/lang/Object;"), true)
+        requireMethod(QUEUE_CAPTURE, "captureManager", "V", listOf("Ljava/lang/Object;"), true)
         requireMethod("Ldev/selfhosted/music/Telemetry;", "onPlaybackQueueMetadata", "V", listOf("Ljava/lang/String;"), true)
         requireMethod("Ldev/selfhosted/music/Telemetry;", "onPlaylistContext", "V", listOf("Ljava/lang/String;", "Ljava/lang/String;", "I"), true)
         requireMethod("Laxvv;", "j", "Laxwr;")
@@ -87,9 +88,41 @@ val playbackQueuePatch = bytecodePatch(
             targetReferences.filterIsInstance<MethodReference>().none { it.definingClass == "Laxvv;" && it.name == "o" && it.parameterTypes.isEmpty() && it.returnType == "Ljava/util/List;" }) {
             throw PatchException("Playback queue: native queue update anchors changed")
         }
+        val replacement = requireMethod("Laxvv;", "x", "V", listOf("Laxvs;", "Laxvt;", "Laxvr;"))
+        val replacementInstructions = replacement.implementation?.instructions?.toList().orEmpty()
+        val replacementAnchors = replacementInstructions.indices.filter { index ->
+            val reference = (replacementInstructions[index] as? ReferenceInstruction)?.reference as? MethodReference
+            reference?.definingClass == "Laxvx;" && reference.name == "c" &&
+                reference.parameterTypes == listOf("Laxvs;") && reference.returnType == "V"
+        }
+        if (replacementAnchors.size != 1 || replacementAnchors.single() < 2 ||
+            (replacementInstructions[replacementAnchors.single() - 2] as? ReferenceInstruction)?.reference?.toString() != "Laxvv;->e:Laxvx;" ||
+            (replacementInstructions[replacementAnchors.single() - 1] as? ReferenceInstruction)?.reference?.toString() != "Laxvv;->f:Laxvs;") {
+            throw PatchException("Playback queue: native queue replacement anchor changed")
+        }
+        val contents = requireMethod("Laxvv;", "u", "V", listOf("Ljava/util/List;", "Ljava/util/List;", "I", "Laxvt;"))
+        val contentsInstructions = contents.implementation?.instructions?.toList().orEmpty()
+        val contentsAnchors = contentsInstructions.indices.filter { index ->
+            val reference = (contentsInstructions[index] as? ReferenceInstruction)?.reference as? MethodReference
+            reference?.definingClass == "Laxwk;" && reference.name == "k" &&
+                reference.parameterTypes == listOf("Ljava/util/List;", "Ljava/util/List;", "I", "Laxvt;") && reference.returnType == "V"
+        }
+        if (contentsAnchors.size != 1 || contentsInstructions.none {
+                (it as? ReferenceInstruction)?.reference?.toString() == "Laxvv;->f:Laxvs;"
+            }) throw PatchException("Playback queue: native queue contents anchor changed")
         val mutable = classDefs.getOrReplaceMutable(classDefs["Lkoy;"]!!).methods.single {
             it.name == "j" && it.parameterTypes.isEmpty() && it.returnType == "V"
         }
         mutable.addInstruction(0, "invoke-static/range {p0 .. p0}, $QUEUE_CAPTURE->capture(Ljava/lang/Object;)V")
+        val mutableReplacement = classDefs.getOrReplaceMutable(classDefs["Laxvv;"]!!).methods.single {
+            it.name == "x" && it.parameterTypes == replacement.parameterTypes && it.returnType == "V"
+        }
+        mutableReplacement.addInstruction(replacementAnchors.single() + 1,
+            "invoke-static/range {p0 .. p0}, $QUEUE_CAPTURE->captureManager(Ljava/lang/Object;)V")
+        val mutableContents = classDefs.getOrReplaceMutable(classDefs["Laxvv;"]!!).methods.single {
+            it.name == "u" && it.parameterTypes == contents.parameterTypes && it.returnType == "V"
+        }
+        mutableContents.addInstruction(contentsAnchors.single() + 1,
+            "invoke-static/range {p0 .. p0}, $QUEUE_CAPTURE->captureManager(Ljava/lang/Object;)V")
     }
 }

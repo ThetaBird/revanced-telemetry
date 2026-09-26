@@ -54,6 +54,7 @@ class AuditApk {
                 || calls.getOrDefault("onRepeatMode", 0) < 2
                 || calls.getOrDefault("queueSelection:capture", 0) < 1
                 || calls.getOrDefault("queue:capture", 0) < 1
+                || calls.getOrDefault("queue:captureManager", 0) < 2
                 || calls.getOrDefault("playlist:opened", 0) < 1
                 || calls.getOrDefault("playlist:capture", 0) < 1
                 || calls.getOrDefault("onInAppSkipNext", 0) < 2

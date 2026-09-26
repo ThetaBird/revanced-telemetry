@@ -1,5 +1,23 @@
 # YouTube Music 8.40.54 validation
 
+## Native queue timing — 2026-09-26
+
+Version 0.1.3 adds direct hooks after native queue replacement and content-update
+mutations. The earlier media-session hook remains for later item updates. Patch
+fixtures verify the new anchors and reject changed bytecode before instrumentation.
+
+- Bundle: `patches/build/libs/music-telemetry-0.1.3.rvp`
+- Bundle SHA-256: `3ba9e1225688874bda9817e433b5c78dbe7c103c8724fe0a2bc62088043c2096`
+- Local APK: `.local/music-8.40.54-queue-eager-0.1.3.apk`
+- APK SHA-256: `db6664cf6660ab0ca83f064beb0e90ff7564e7eacf8b9a7898109e32b828f17c`
+
+The bundle build and 37 Kotlin patch tests passed. Ten exporter/receiver integration
+tests and eight packaging-helper tests passed. Patching the original 8.40.54 APK
+passed, and the emitted DEX audit found both direct queue hooks. Android
+instrumentation passed on an API 36.1 emulator, and the patched APK verifies
+with v2 and v3 signatures. On-device queue
+latency still requires a new APK install and a live host playback observation.
+
 ## Ratings, repeat and queue clicks — 2026-09-15
 
 Current local artifacts (not a published release):

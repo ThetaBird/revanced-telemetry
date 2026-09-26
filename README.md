@@ -38,7 +38,7 @@ script discovers Android Studio's JBR and the usual Android SDK location.
 ./scripts/build.sh
 ```
 
-Output: `patches/build/libs/music-telemetry-0.1.2.rvp`.
+Output: `patches/build/libs/music-telemetry-0.1.3.rvp`.
 
 The build downloads ReVanced CLI **6.0.0** and R8 **9.4.17**, verifying pinned
 SHA-256 checksums. It compiles against the CLI's bundled **Patcher 22** API with
@@ -74,6 +74,9 @@ Manager does not currently verify patch-bundle signatures. Release artifacts are
 built by this repository's workflow and include a SHA-256 checksum for independent
 verification. Updating the source downloads a newer patch bundle; applying that
 update still requires repatching the original Music APK.
+The queue patch now captures native replacements and content changes directly;
+older installed APKs still wait for a media-session refresh. Repatch and install
+the original Music APK to apply the timing fix on the device.
 
 ## Patch a local APK
 
@@ -242,12 +245,12 @@ python3 -m venv .venv-test
 .venv-test/bin/python -m unittest discover -s ../listen/server -p 'test_*.py'
 ```
 
-The current local artifact is `.local/music-8.40.54-controls.apk`. It contains no
+The current local validation artifact is `.local/music-8.40.54-queue-eager-0.1.3.apk`. It contains no
 embedded collector configuration. In **Settings → Listen telemetry**, enter your
 collector URL and Listen write token, enable telemetry, and save. Updating either
 setting requires no restart or rebuild.
 
-The 35 Kotlin patch tests, 10 exporter/integration tests, 8 helper tests and Android
+The 37 Kotlin patch tests, 10 exporter/integration tests, 8 helper tests and Android
 runtime harness pass.
 The harness exercises the real form, invalid input, persistence, disabled capture,
 live endpoint/token changes, retry identity and preserved playback context. Its

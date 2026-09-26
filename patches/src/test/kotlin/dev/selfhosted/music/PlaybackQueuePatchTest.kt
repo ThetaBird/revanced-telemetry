@@ -15,11 +15,22 @@ import kotlin.test.*
 class PlaybackQueuePatchTest {
     @Test fun `hook precedes queue update without allocating registers`() = fixture { context ->
         playbackQueuePatch.execute(context)
-        val method = context.classDefs.getOrReplaceMutable(context.classDefs["Lkoy;"]!!).methods.single()
+        val method = context.classDefs.getOrReplaceMutable(context.classDefs["Lkoy;"]!!).methods.single { it.name == "j" }
         assertEquals(27, method.implementation!!.registerCount)
         val reference = (method.implementation!!.instructions.first() as ReferenceInstruction).reference as MethodReference
         assertEquals("Ldev/selfhosted/music/NativeQueueCapture;", reference.definingClass)
         assertEquals("capture", reference.name)
+        val manager = context.classDefs.getOrReplaceMutable(context.classDefs["Laxvv;"]!!)
+        for ((name, anchor) in listOf("x" to "c", "u" to "k")) {
+            val instructions = manager.methods.single { it.name == name }.implementation!!.instructions.toList()
+            val anchorIndex = instructions.indexOfFirst {
+                ((it as? ReferenceInstruction)?.reference as? MethodReference)?.name == anchor
+            }
+            assertTrue(anchorIndex >= 0)
+            val callback = (instructions[anchorIndex + 1] as ReferenceInstruction).reference as MethodReference
+            assertEquals("Ldev/selfhosted/music/NativeQueueCapture;", callback.definingClass)
+            assertEquals("captureManager", callback.name)
+        }
         val output = Files.createTempFile("queue-output", ".dex")
         try { DexPool.writeTo(output.toString(), ImmutableDexFile(Opcodes.getDefault(), context.classDefs.toList().map { context.classDefs.getOrReplaceMutable(it) })) }
         finally { Files.delete(output) }
@@ -41,11 +52,21 @@ class PlaybackQueuePatchTest {
         alter = { it.replace("onPlaybackQueueMetadata", "missingCallback") },
     ) { context -> assertFailsWith<PatchException> { playbackQueuePatch.execute(context) }; assertNoHook(context) }
 
+    @Test fun `changed replacement anchor rejects before instrumentation`() = fixture(
+        alter = { it.replace("Laxvx;->c(Laxvs;)V", "Laxvx;->other(Laxvs;)V") },
+    ) { context -> assertFailsWith<PatchException> { playbackQueuePatch.execute(context) }; assertNoHook(context) }
+
+    @Test fun `changed contents anchor rejects before instrumentation`() = fixture(
+        alter = { it.replace("Laxwk;->k(Ljava/util/List;Ljava/util/List;ILaxvt;)V", "Laxwk;->other(Ljava/util/List;Ljava/util/List;ILaxvt;)V") },
+    ) { context -> assertFailsWith<PatchException> { playbackQueuePatch.execute(context) }; assertNoHook(context) }
+
     private fun assertNoHook(context: BytecodePatchContext) {
-        val method = context.classDefs.getOrReplaceMutable(context.classDefs["Lkoy;"]!!).methods.single()
-        assertTrue(method.implementation!!.instructions.none {
-            ((it as? ReferenceInstruction)?.reference as? MethodReference)?.definingClass == "Ldev/selfhosted/music/NativeQueueCapture;"
-        })
+        for (type in listOf("Lkoy;", "Laxvv;")) {
+            val methods = context.classDefs.getOrReplaceMutable(context.classDefs[type]!!).methods
+            assertTrue(methods.flatMap { it.implementation?.instructions.orEmpty() }.none {
+                ((it as? ReferenceInstruction)?.reference as? MethodReference)?.definingClass == "Ldev/selfhosted/music/NativeQueueCapture;"
+            })
+        }
     }
 
     private fun fixture(alter: (String) -> String = { it }, block: (BytecodePatchContext) -> Unit) {
@@ -71,6 +92,7 @@ class PlaybackQueuePatchTest {
             """.trimIndent())
             add("Laxvv;", """
                 .field public e:Laxvx;
+                .field public f:Laxvs;
                 .method public final o()Ljava/util/List;
                 .registers 4
                 iget-object v0, p0, Laxvv;->e:Laxvx;
@@ -81,7 +103,22 @@ class PlaybackQueuePatchTest {
                 move-result-object v0
                 return-object v0
                 .end method
+                .method public final x(Laxvs;Laxvt;Laxvr;)V
+                .registers 5
+                iget-object v0, p0, Laxvv;->e:Laxvx;
+                iget-object v1, p0, Laxvv;->f:Laxvs;
+                invoke-virtual {v0, v1}, Laxvx;->c(Laxvs;)V
+                return-void
+                .end method
+                .method public final u(Ljava/util/List;Ljava/util/List;ILaxvt;)V
+                .registers 6
+                iget-object v0, p0, Laxvv;->f:Laxvs;
+                invoke-interface {v0, p1, p2, p3, p4}, Laxwk;->k(Ljava/util/List;Ljava/util/List;ILaxvt;)V
+                return-void
+                .end method
             """.trimIndent() + "\n" + method("j()Laxwr;"))
+            add("Laxvx;", method("c(Laxvs;)V"))
+            add("Laxwk;", method("k(Ljava/util/List;Ljava/util/List;ILaxvt;)V"))
             add("Lchiu;", method("gg()Ljava/lang/Object;"))
             add("Laxwr;", method("t()Ljava/lang/String;") + method("m()Laygw;"))
             add("Laxwv;", method("p()Ljava/lang/Long;"))
@@ -90,7 +127,7 @@ class PlaybackQueuePatchTest {
             add("Lncu;", ".implements Laxwr;\n.implements Laxwv;\n")
             add("Lbytq;", ".field public c:Lbjoy;\n")
             add("Lbytp;", ".field public c:Ljava/lang/String;\n.field public d:I\n.field public e:I\n")
-            add("Ldev/selfhosted/music/NativeQueueCapture;", ".method public static capture(Ljava/lang/Object;)V\n.registers 1\nreturn-void\n.end method")
+            add("Ldev/selfhosted/music/NativeQueueCapture;", ".method public static capture(Ljava/lang/Object;)V\n.registers 1\nreturn-void\n.end method\n.method public static captureManager(Ljava/lang/Object;)V\n.registers 1\nreturn-void\n.end method")
             add("Ldev/selfhosted/music/Telemetry;", ".method public static onPlaybackQueueMetadata(Ljava/lang/String;)V\n.registers 1\nreturn-void\n.end method\n.method public static onPlaylistContext(Ljava/lang/String;Ljava/lang/String;I)V\n.registers 3\nreturn-void\n.end method")
             val dex = directory.resolve("classes.dex").toFile()
             assertTrue(Smali.assemble(SmaliOptions().apply { outputDexFile = dex.path }, input.path))

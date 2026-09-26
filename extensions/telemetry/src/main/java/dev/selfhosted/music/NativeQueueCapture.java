@@ -12,7 +12,14 @@ public final class NativeQueueCapture {
     public static void capture(Object owner) {
         try {
             Object provider = owner.getClass().getField("b").get(owner);
-            Object manager = call(provider, "gg");
+            captureManager(call(provider, "gg"));
+        } catch (Throwable failure) {
+            Telemetry.captureFailure("Native queue capture failed", failure);
+        }
+    }
+
+    public static void captureManager(Object manager) {
+        try {
             context(manager);
             String snapshot = snapshot(manager);
             if (snapshot != null) Telemetry.onPlaybackQueueMetadata(snapshot);
