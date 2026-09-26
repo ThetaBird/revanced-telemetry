@@ -17,6 +17,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.lang.reflect.Method;
 import org.json.JSONObject;
 
 /** Exercise the real settings form and production uploader, using an in-memory HTTPS transport. */
@@ -86,6 +87,21 @@ final class SettingsTests {
             check(request.url.equals(first.endpoint) && request.authorization.equals("Bearer test-token-one"), "saved settings not used for upload");
             check(new JSONObject(request.body).getString("videoId").equals("firsttrack1"), "wrong uploaded payload");
             barrier(worker);
+
+            worker.submit(() -> {
+                for (int number = 0; number < 3; number++) {
+                    store.append(new JSONObject().put("id", "batch-" + number).put("event", "music_action"));
+                }
+                Method schedule = Telemetry.class.getDeclaredMethod("scheduleFlush", long.class);
+                schedule.setAccessible(true);
+                schedule.invoke(null, 0L);
+                return null;
+            }).get(30, TimeUnit.SECONDS);
+            Request batch = take();
+            check(batch.url.equals(first.endpoint + "/batch"), "queued events did not use batch endpoint");
+            check(new JSONObject(batch.body).getJSONArray("events").length() == 3, "batch omitted queued events");
+            barrier(worker);
+            check(store.batch().isEmpty(), "batch acknowledgment left queued events");
 
             // A failed upload remains queued. Token rotation retries it with the new token.
             response = 503;

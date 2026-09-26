@@ -1,5 +1,8 @@
 package dev.selfhosted.music;
 
+import android.os.Handler;
+import android.os.Looper;
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
 import java.util.List;
 import org.json.JSONArray;
@@ -7,7 +10,45 @@ import org.json.JSONObject;
 
 /** APK 8.40.54 native queue adapter. Host references never cross the callback boundary. */
 public final class NativeQueueCapture {
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
+    private static volatile WeakReference<Object> managerReference = new WeakReference<>(null);
+    private static boolean periodicScheduled;
+    private static final Runnable PERIODIC = new Runnable() {
+        @Override public void run() {
+            Object manager = managerReference.get();
+            if (manager == null) { periodicScheduled = false; return; }
+            captureNow(manager);
+            MAIN.postDelayed(this, 5000);
+        }
+    };
     private NativeQueueCapture() {}
+
+    public static void registerManager(Object manager) {
+        if (manager == null) return;
+        managerReference = new WeakReference<>(manager);
+        MAIN.post(() -> {
+            if (!periodicScheduled) {
+                periodicScheduled = true;
+                MAIN.postDelayed(PERIODIC, 5000);
+            }
+        });
+    }
+
+    public static void queueChanged() {
+        requestCapture(0);
+        requestCapture(500);
+        requestCapture(2000);
+    }
+
+    public static void trackChanged() { queueChanged(); }
+
+    private static void requestCapture(long delayMs) {
+        if (managerReference.get() == null) return;
+        MAIN.postDelayed(() -> {
+            Object manager = managerReference.get();
+            if (manager != null) captureNow(manager);
+        }, delayMs);
+    }
 
     public static void capture(Object owner) {
         try {
@@ -19,6 +60,12 @@ public final class NativeQueueCapture {
     }
 
     public static void captureManager(Object manager) {
+        registerManager(manager);
+        queueChanged();
+    }
+
+    private static void captureNow(Object manager) {
+        if (!Telemetry.captureEnabled()) return;
         try {
             context(manager);
             String snapshot = snapshot(manager);

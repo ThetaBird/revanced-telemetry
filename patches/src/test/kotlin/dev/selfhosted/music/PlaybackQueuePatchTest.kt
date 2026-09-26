@@ -31,6 +31,13 @@ class PlaybackQueuePatchTest {
             assertEquals("Ldev/selfhosted/music/NativeQueueCapture;", callback.definingClass)
             assertEquals("captureManager", callback.name)
         }
+        val constructor = manager.methods.single { it.name == "<init>" }.implementation!!.instructions.toList()
+        assertEquals("registerManager", ((constructor[constructor.size - 2] as ReferenceInstruction).reference as MethodReference).name)
+        val observer = context.classDefs.getOrReplaceMutable(context.classDefs["Laxvw;"]!!)
+        for (name in listOf("a", "b", "c")) {
+            val callback = (observer.methods.single { it.name == name }.implementation!!.instructions.first() as ReferenceInstruction).reference as MethodReference
+            assertEquals("queueChanged", callback.name)
+        }
         val output = Files.createTempFile("queue-output", ".dex")
         try { DexPool.writeTo(output.toString(), ImmutableDexFile(Opcodes.getDefault(), context.classDefs.toList().map { context.classDefs.getOrReplaceMutable(it) })) }
         finally { Files.delete(output) }
@@ -60,8 +67,12 @@ class PlaybackQueuePatchTest {
         alter = { it.replace("Laxwk;->k(Ljava/util/List;Ljava/util/List;ILaxvt;)V", "Laxwk;->other(Ljava/util/List;Ljava/util/List;ILaxvt;)V") },
     ) { context -> assertFailsWith<PatchException> { playbackQueuePatch.execute(context) }; assertNoHook(context) }
 
+    @Test fun `changed mutation observer rejects before instrumentation`() = fixture(
+        alter = { it.replace("Laxvx;->d()V", "Laxvx;->other()V") },
+    ) { context -> assertFailsWith<PatchException> { playbackQueuePatch.execute(context) }; assertNoHook(context) }
+
     private fun assertNoHook(context: BytecodePatchContext) {
-        for (type in listOf("Lkoy;", "Laxvv;")) {
+        for (type in listOf("Lkoy;", "Laxvv;", "Laxvw;")) {
             val methods = context.classDefs.getOrReplaceMutable(context.classDefs[type]!!).methods
             assertTrue(methods.flatMap { it.implementation?.instructions.orEmpty() }.none {
                 ((it as? ReferenceInstruction)?.reference as? MethodReference)?.definingClass == "Ldev/selfhosted/music/NativeQueueCapture;"
@@ -93,6 +104,14 @@ class PlaybackQueuePatchTest {
             add("Laxvv;", """
                 .field public e:Laxvx;
                 .field public f:Laxvs;
+                .method public constructor <init>(Laxwf;Lncv;Layfk;)V
+                .registers 5
+                invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+                new-instance v0, Laxvx;
+                invoke-direct {v0}, Laxvx;-><init>()V
+                iput-object v0, p0, Laxvv;->e:Laxvx;
+                return-void
+                .end method
                 .method public final o()Ljava/util/List;
                 .registers 4
                 iget-object v0, p0, Laxvv;->e:Laxvx;
@@ -118,6 +137,23 @@ class PlaybackQueuePatchTest {
                 .end method
             """.trimIndent() + "\n" + method("j()Laxwr;"))
             add("Laxvx;", method("c(Laxvs;)V"))
+            add("Laxvw;", """
+                .method public final a(III)V
+                .registers 4
+                invoke-virtual {p0}, Laxvx;->d()V
+                return-void
+                .end method
+                .method public final b(IIII)V
+                .registers 5
+                invoke-virtual {p0}, Laxvx;->d()V
+                return-void
+                .end method
+                .method public final c(III)V
+                .registers 4
+                invoke-virtual {p0}, Laxvx;->d()V
+                return-void
+                .end method
+            """.trimIndent())
             add("Laxwk;", method("k(Ljava/util/List;Ljava/util/List;ILaxvt;)V"))
             add("Lchiu;", method("gg()Ljava/lang/Object;"))
             add("Laxwr;", method("t()Ljava/lang/String;") + method("m()Laygw;"))
@@ -127,7 +163,7 @@ class PlaybackQueuePatchTest {
             add("Lncu;", ".implements Laxwr;\n.implements Laxwv;\n")
             add("Lbytq;", ".field public c:Lbjoy;\n")
             add("Lbytp;", ".field public c:Ljava/lang/String;\n.field public d:I\n.field public e:I\n")
-            add("Ldev/selfhosted/music/NativeQueueCapture;", ".method public static capture(Ljava/lang/Object;)V\n.registers 1\nreturn-void\n.end method\n.method public static captureManager(Ljava/lang/Object;)V\n.registers 1\nreturn-void\n.end method")
+            add("Ldev/selfhosted/music/NativeQueueCapture;", ".method public static capture(Ljava/lang/Object;)V\n.registers 1\nreturn-void\n.end method\n.method public static captureManager(Ljava/lang/Object;)V\n.registers 1\nreturn-void\n.end method\n.method public static registerManager(Ljava/lang/Object;)V\n.registers 1\nreturn-void\n.end method\n.method public static queueChanged()V\n.registers 0\nreturn-void\n.end method")
             add("Ldev/selfhosted/music/Telemetry;", ".method public static onPlaybackQueueMetadata(Ljava/lang/String;)V\n.registers 1\nreturn-void\n.end method\n.method public static onPlaylistContext(Ljava/lang/String;Ljava/lang/String;I)V\n.registers 3\nreturn-void\n.end method")
             val dex = directory.resolve("classes.dex").toFile()
             assertTrue(Smali.assemble(SmaliOptions().apply { outputDexFile = dex.path }, input.path))

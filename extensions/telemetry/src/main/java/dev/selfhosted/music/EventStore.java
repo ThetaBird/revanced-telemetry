@@ -9,6 +9,7 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.nio.charset.StandardCharsets;
 
 /** Used only by Telemetry's single background executor. */
 final class EventStore extends SQLiteOpenHelper {
@@ -85,8 +86,15 @@ final class EventStore extends SQLiteOpenHelper {
 
     List<JSONObject> batch() throws Exception {
         List<JSONObject> events = new ArrayList<>();
-        try (Cursor c = getReadableDatabase().query("events", new String[]{"payload"}, null, null, null, null, "sequence ASC", "1")) {
-            while (c.moveToNext()) events.add(new JSONObject(c.getString(0)));
+        int bytes = 16;
+        try (Cursor c = getReadableDatabase().query("events", new String[]{"payload"}, null, null, null, null, "sequence ASC", "50")) {
+            while (c.moveToNext()) {
+                String payload = c.getString(0);
+                int size = payload.getBytes(StandardCharsets.UTF_8).length + 1;
+                if (!events.isEmpty() && bytes + size > 900 * 1024) break;
+                events.add(new JSONObject(payload));
+                bytes += size;
+            }
         }
         return events;
     }

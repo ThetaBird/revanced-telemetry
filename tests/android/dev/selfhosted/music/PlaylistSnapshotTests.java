@@ -32,9 +32,6 @@ final class PlaylistSnapshotTests {
                 field("flushScheduled").setBoolean(null, true);
                 return null;
             }).get(30, TimeUnit.SECONDS);
-            Object video = field("videoId").get(null);
-            Object session = field("sessionId").get(null);
-            long position = field("positionMs").getLong(null);
             CountDownLatch release = new CountDownLatch(1);
             worker.submit(() -> { release.await(30, TimeUnit.SECONDS); return null; });
             String[] ids = {FIRST, SECOND, FIRST, null, "invalid"};
@@ -63,6 +60,23 @@ final class PlaylistSnapshotTests {
             Telemetry.onPlaybackQueue(new String[50001]);
             drain(worker);
             check(read(store).size() == 1, "duplicate or invalid queue captured");
+            field("lastPlaybackQueueAt").setLong(null, System.currentTimeMillis() - 61000);
+            Telemetry.onPlaybackQueue(new String[]{FIRST, SECOND, FIRST, null, null});
+            drain(worker);
+            check(read(store).size() == 2, "unchanged queue heartbeat missing");
+            store.getWritableDatabase().delete("events", null, null);
+            Telemetry.onTrack(FIRST);
+            Telemetry.onPlaybackQueue(new String[]{FIRST, SECOND, FIRST, null, null});
+            drain(worker);
+            events = read(store);
+            check(events.size() == 2 && "playback_queue".equals(events.get(1).getString("event")),
+                    "song change must emit the unchanged queue again");
+            store.getWritableDatabase().delete("events", null, null);
+            field("lastPlaybackQueue").set(null, null);
+            Object video = field("videoId").get(null);
+            Object session = field("sessionId").get(null);
+            long position = field("positionMs").getLong(null);
+            Telemetry.onPlaybackQueue(new String[]{FIRST, SECOND, FIRST, null, null});
             Telemetry.onPlaybackQueue(new String[]{SECOND, FIRST});
             Telemetry.onPlaybackQueue(new String[0]);
             Telemetry.onPlaybackQueue(new String[0]);

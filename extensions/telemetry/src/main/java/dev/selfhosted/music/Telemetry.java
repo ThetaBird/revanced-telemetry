@@ -31,7 +31,7 @@ public final class Telemetry {
     private static final AtomicLong DROPPED_CALLBACKS = new AtomicLong();
     private static EventStore store;
     private static Context applicationContext;
-    private static boolean enabled;
+    private static volatile boolean enabled;
     private static ScheduledFuture<?> flushTask;
     private static URL url;
     private static String token;
@@ -43,6 +43,7 @@ public final class Telemetry {
     private static boolean flushScheduled;
     private static int failures;
     private static String lastPlaybackQueue;
+    private static long lastPlaybackQueueAt;
     private static String lastOpenedPlaylist;
     private static String contextVideoId;
     private static String contextPlaylistId;
@@ -50,6 +51,8 @@ public final class Telemetry {
     private static String activePlaylistId;
 
     private Telemetry() {}
+
+    static boolean captureEnabled() { return enabled; }
 
     private static ScheduledThreadPoolExecutor createWorker() {
         ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, runnable -> {
@@ -141,6 +144,7 @@ public final class Telemetry {
         if (!wasEnabled || !config.enabled || url == null
                 || !url.toExternalForm().equals(config.endpoint)) {
             lastPlaybackQueue = null;
+            lastPlaybackQueueAt = 0;
             lastOpenedPlaylist = null;
             contextVideoId = null;
             contextPlaylistId = null;
@@ -198,11 +202,13 @@ public final class Telemetry {
     }
 
     private static void capturePlaybackQueue(org.json.JSONArray tracks, long time) {
-        if (!enabled || store == null) { lastPlaybackQueue = null; return; }
+        if (!enabled || store == null) { lastPlaybackQueue = null; lastPlaybackQueueAt = 0; return; }
         try {
             org.json.JSONArray normalized = PlaylistSnapshot.normalize(tracks);
-            String identity = normalized.toString();
-            if (identity.equals(lastPlaybackQueue)) return;
+            String identity = new org.json.JSONArray().put(normalized).put(videoId)
+                    .put(contextVideoId).put(contextPlaylistIndex).toString();
+            if (identity.equals(lastPlaybackQueue) && time >= lastPlaybackQueueAt
+                    && time - lastPlaybackQueueAt < 60000) return;
             List<JSONObject> parts = PlaylistSnapshot.events(normalized, time, sourcePackage,
                     DROPPED_CALLBACKS.get());
             android.database.sqlite.SQLiteDatabase db = store.getWritableDatabase();
@@ -212,7 +218,8 @@ public final class Telemetry {
                 db.setTransactionSuccessful();
             } finally { db.endTransaction(); }
             lastPlaybackQueue = identity;
-            scheduleFlush(1);
+            lastPlaybackQueueAt = time;
+            scheduleFlush(0);
         } catch (Exception failure) { warn("Cannot persist playback queue", failure); }
     }
 
@@ -249,7 +256,7 @@ public final class Telemetry {
                         db.setTransactionSuccessful();
                     } finally { db.endTransaction(); }
                     lastOpenedPlaylist = identity;
-                    scheduleFlush(1);
+                    scheduleFlush(0);
                 } catch (Exception failure) { warn("Cannot persist opened playlist", failure); }
             });
         } catch (Throwable failure) { warn("Cannot capture opened playlist", failure); }
@@ -284,6 +291,7 @@ public final class Telemetry {
 
     public static void onTrack(String id) {
         final long time = System.currentTimeMillis();
+        if (id != null && !id.isEmpty()) NativeQueueCapture.trackChanged();
         submit(() -> {
             if (!enabled || store == null || id == null || id.isEmpty() || id.equals(videoId)) return;
             videoId = id;
@@ -456,7 +464,7 @@ public final class Telemetry {
                 while (keys.hasNext()) { String key = keys.next(); event.put(key, data.get(key)); }
             }
             store.append(event);
-            scheduleFlush(1);
+            scheduleFlush(0);
             return true;
         } catch (Exception failure) { warn("Cannot persist event", failure); return false; }
     }
@@ -470,7 +478,7 @@ public final class Telemetry {
             catch (Throwable failure) {
                 warn("Upload deferred", failure);
                 failures = Math.min(failures + 1, 8);
-                scheduleFlush(Math.min(300, 1L << failures));
+                scheduleFlush(Math.min(15, 1L << failures));
             }
         }, delaySeconds, TimeUnit.SECONDS);
     }
@@ -479,20 +487,28 @@ public final class Telemetry {
         if (!enabled || store == null || url == null) return;
         List<JSONObject> batch = store.batch();
         if (batch.isEmpty()) { failures = 0; return; }
-        // Yield to queued captures after each request, even when there is a large backlog.
-        JSONObject event = batch.get(0);
-        post(event.toString());
+        String payload;
+        URL destination = url;
+        if (batch.size() == 1) {
+            payload = batch.get(0).toString();
+        } else {
+            org.json.JSONArray events = new org.json.JSONArray();
+            for (JSONObject event : batch) events.put(event);
+            payload = new JSONObject().put("events", events).toString();
+            destination = new URL(url.toExternalForm() + "/batch");
+        }
+        post(destination, payload);
         List<String> ids = new ArrayList<>();
-        ids.add(event.getString("id"));
+        for (JSONObject event : batch) ids.add(event.getString("id"));
         store.acknowledge(ids);
         failures = 0;
-        scheduleFlush(1);
+        scheduleFlush(0);
     }
 
-    // Listen EventUploader contract: full configured URL, one object, any 2xx acknowledges id.
-    private static void post(String payload) throws Exception {
+    // Listen EventUploader contract: configured URL for one event, /batch for multiple.
+    private static void post(URL destination, String payload) throws Exception {
         byte[] body = payload.getBytes(StandardCharsets.UTF_8);
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        HttpURLConnection connection = (HttpURLConnection) destination.openConnection();
         try {
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(10000);

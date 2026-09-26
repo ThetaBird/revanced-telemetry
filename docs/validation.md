@@ -1,5 +1,24 @@
 # YouTube Music 8.40.54 validation
 
+## Queue reconciliation — 2026-09-26
+
+Version 0.1.4 observes native queue insertions, removals, and moves; retains
+replacement and content hooks; and reconciles on track changes and every five
+seconds while the manager exists. Unchanged queues emit a heartbeat after one
+minute so the receiver can match a current track even when no mutation occurs.
+Queued events upload in bounded batches rather than one request per second.
+
+- Bundle: `patches/build/libs/music-telemetry-0.1.4.rvp`
+- Bundle SHA-256: `49ee5095b3959b1cdbc59a9690fd4be6e7e8b30187a9e196fd4908d280e33736`
+- Local APK: `.local/music-8.40.54-queue-0.1.4.apk`
+- APK SHA-256: `9ff43b3438f3bce4cf2bc93a47ad7ac3745c17407e8c3e706af58298753841aa`
+
+The bundle build and 38 Kotlin patch tests, 10 exporter/receiver tests, and eight
+packaging-helper tests passed. Patching the original 8.40.54 APK passed with
+emitted-DEX hook audit; the APK verifies with v2 and v3 signatures. Android
+instrumentation passed on an API 36.1 emulator. Live host latency remains
+unverified until the updated APK is installed.
+
 ## Native queue timing — 2026-09-26
 
 Version 0.1.3 adds direct hooks after native queue replacement and content-update
